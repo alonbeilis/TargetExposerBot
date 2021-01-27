@@ -12,3 +12,4 @@ def create_frame(agent: int, targets: list, size: int):
 def frames_gen(agent: int, targets: list, time: int, size: int = SIZE):
     for t in range(time):
         yield create_frame(agent=agent, targets=targets, size=size)
+        print("wow")
