@@ -2,6 +2,7 @@ import math
 import numpy as np
 import random
 
+from copy import deepcopy
 from scipy import ndimage as nd
 from typing import Tuple
 
@@ -9,13 +10,23 @@ Point = Tuple[int, int]
 
 
 class Map:
-    def __init__(self, agent_location: Point = None, alpha: float = 0.3, init_prob_value: float = 0.5,
-                 p_ta: float = 1.0, probability_to_match: float = 0.95, size: int = 20, sensor_info: int = 10, targets_locations=None):
+    def __init__(self,
+                 agent_location: Point = None,
+                 alpha: float = 0.3,
+                 init_prob_value: float = 0.5,
+                 p_ta: float = 1.0,
+                 probability_to_match: float = 0.95,
+                 size: int = 20,
+                 sensor_info: int = 10,
+                 targets_locations=None):
+
         self.agent_point = agent_location
+        self.alpha = alpha
         self.board_size = size  # assuming board is symmetrical
-        self.p_fa = alpha * p_ta
+        self.init_prob_value = init_prob_value
+        self.p_fa = self.alpha * p_ta
         self.p_ta = p_ta
-        self.probability_map = np.full((size, size), init_prob_value)
+        self.probability_map = np.full((size, size), self.init_prob_value)
         self.probability_to_match = probability_to_match
         self.sensor_info = sensor_info
 
@@ -121,10 +132,10 @@ class Map:
             return
 
         agent_pos_x, agent_pos_y = self.agent_point
-        com_pos_x, com_pos_y = point
+        point_pos_x, point_pos_y = point
 
-        x_diff = com_pos_x - agent_pos_x
-        y_diff = com_pos_y - agent_pos_y
+        x_diff = point_pos_x - agent_pos_x
+        y_diff = point_pos_y - agent_pos_y
 
         agent_pos_x += np.sign(x_diff)
         agent_pos_y += np.sign(y_diff)
@@ -136,26 +147,51 @@ class Map:
         Checks if all of the targets found - probability is over the probability to match
         :returns boolean
         """
-        return bool((self.probability_map[tuple(zip(*self.targets))] > self.probability_to_match).all())
+        for idx, val in self._iterate_map():
+            if self._is_target(point=idx):
+                if val > self.probability_to_match:
+                    self.targets.remove(idx)
 
-    def run_algo(self, max_time_to_run: int):
+        return (self.probability_map[
+                    tuple(zip(*self.targets))] > self.probability_to_match).all() if self.targets else True
+
+    def get_time_for_finding_all_targets(self, max_time_to_run: int, move_agent: bool = False):
+
         for t in range(max_time_to_run):
             self.update_probability_map_single_frame()
-            self.move_agent_single_step(point=self.calc_center_of_mass())
+            if move_agent:
+                self.move_agent_single_step(point=self.calc_center_of_mass())
             if self.all_targets_found():
                 return t
 
 
+def run_algo(iterations: int = 50, max_time_to_run: int = 10000, move_agent: bool = False, **kwargs) -> int:
+    time_to_find_targets = 0
+
+    for iteration in range(iterations):
+        main_map = Map(**deepcopy(kwargs))
+        time_to_find_targets += main_map.get_time_for_finding_all_targets(max_time_to_run=max_time_to_run,
+                                                                          move_agent=move_agent)
+    return np.round(time_to_find_targets / iterations)
+
+
+def main(iterations: int = 100, max_time_to_run: int = 1000, **kw):
+    avg_time_with_agent_movement = run_algo(move_agent=True, **kw)
+    avg_time_without_agent_movement = run_algo(move_agent=False, **kw)
+
+    print(f'{iterations} iterations', )
+    print(f'avg time for finding targets with movement of the agent: {avg_time_with_agent_movement}')
+    print(f'avg time for finding targets without movement of the agent: {avg_time_without_agent_movement}')
+
+
 if __name__ == '__main__':
-    main_map = Map(agent_location=(0, 0),
-                   alpha=0.5,
-                   init_prob_value=0.5,
-                   p_ta=1.0,
-                   probability_to_match=0.95,
-                   size=20,
-                   sensor_info=10,
-                   targets_locations=[(1, 0), (1, 6), (8, 4)])
+    algo_args = dict(agent_location=(0, 0),
+                     alpha=0.5,
+                     init_prob_value=0.5,
+                     p_ta=1.0,
+                     probability_to_match=0.95,
+                     size=20,
+                     sensor_info=10,
+                     targets_locations=[(0, 9), (4, 14), (15, 8)])
 
-    time_to_find_targets = main_map.run_algo(max_time_to_run=10000)
-    print(f'It took {time_to_find_targets} iterations to find the targets')
-
+    main(iterations=50, max_time_to_run=1000, **algo_args)
